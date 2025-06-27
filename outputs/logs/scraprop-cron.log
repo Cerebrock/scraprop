@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/mg/scraprop/src/scraprop.py", line 12, in <module>
+    from scraper import create_scraper, extract_ads, extract_property_details, parse_search_details, test_all_scrapers
+  File "/Users/mg/scraprop/src/scraper.py", line 6, in <module>
+    import cloudscraper
+ModuleNotFoundError: No module named 'cloudscraper'
