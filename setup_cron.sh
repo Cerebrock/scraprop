@@ -12,15 +12,12 @@ LOG_FILE="$LOG_DIR/scraprop-cron.log"
 # Ensure log directory exists
 mkdir -p "$LOG_DIR"
 
-# Cron job line: 8:30 AM and 6:30 PM
-CRON_LINE="30 8,18 * * * $PYTHON_PATH $SCRIPT_PATH >> $LOG_FILE 2>&1"
+# Remove any existing cron job for this script
+crontab -l 2>/dev/null | grep -v -F "$SCRIPT_PATH" | crontab -
 
-# Check if cron job already exists
-(crontab -l 2>/dev/null | grep -F "$SCRIPT_PATH") && FOUND=1 || FOUND=0
+# Cron job line: every 30 minutes
+CRON_LINE="*/30 * * * * $PYTHON_PATH $SCRIPT_PATH >> $LOG_FILE 2>&1"
 
-if [ $FOUND -eq 1 ]; then
-  echo "Cron job already exists."
-else
-  (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
-  echo "Cron job added: $CRON_LINE"
-fi 
+# Add the new cron job
+(crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+echo "Cron job set to: $CRON_LINE" 
