@@ -12,11 +12,14 @@ Scrapes property listings from Zonaprop, Argenprop, and MercadoLibre, saving all
 - `outputs/` — All output files (CSV, logs)
 
 ## Features
-- Scrapes multiple real estate sources
-- Extracts price, expenses (expensas), neighbourhood, surface, rooms, and more
-- Saves all scraped data to `outputs/scraped_properties.csv`
-- Sends new property links and details to Telegram
-- Avoids duplicate notifications using a `seen.txt` file
+- **Multi-source scraping**: Zonaprop, Argenprop, and MercadoLibre
+- **LLM Analysis**: AI-powered property scoring and analysis using Google Gemini
+- **Smart filtering**: Penalizes commercial properties ("local", "deposito") with -15 points
+- **Live Google Sheets**: Real-time updates to shareable Google Sheets (optional)
+- **CSV Export**: All scraped data saved to `outputs/scraped_properties.csv`
+- **Telegram notifications**: New high-scoring properties sent via Telegram
+- **Duplicate prevention**: Tracks seen properties to avoid spam
+- **Detailed extraction**: Price, expenses, neighbourhood, surface, rooms, descriptions, and more
 
 ## Setup
 1. **Clone the repo**
@@ -26,10 +29,31 @@ Scrapes property listings from Zonaprop, Argenprop, and MercadoLibre, saving all
    ```
 3. **Set up environment variables** in a `.env` file:
    ```env
+   # Required for Telegram notifications
    TELEGRAM_BOT_ID=your_bot_id
    TELEGRAM_ID=your_telegram_user_id
+   
+   # Required for LLM analysis
+   GEMINI_API_KEY=your_gemini_api_key
+   
+   # Optional: Google Sheets integration (see setup guide)
+   GOOGLE_SHEETS_CREDENTIALS_FILE=credentials.json
+   GOOGLE_SHEETS_SHARE_EMAIL=your-email@gmail.com
+   # GOOGLE_SHEET_ID=your_existing_sheet_id
    ```
 4. **Add search URLs** to `urls_to_scrap.txt` (one per line)
+
+## Google Sheets Integration (Optional)
+
+Set up live Google Sheets for real-time property data viewing:
+
+1. **Follow the detailed setup guide**: See `setup_google_sheets.md`
+2. **Test the integration**: Run `python test_google_sheets.py`
+3. **Features**:
+   - Automatic updates with every scraper run
+   - Data sorted by LLM score (best properties first)
+   - Shareable with colleagues or family
+   - Includes timestamps and all analysis data
 
 ## Running
 - To run the main workflow:
@@ -42,17 +66,42 @@ Scrapes property listings from Zonaprop, Argenprop, and MercadoLibre, saving all
   ```
 
 ## Output
-- **CSV:** All scraped properties are saved to `outputs/scraped_properties.csv` with columns:
-  - url, price, expenses, neighbourhood, surface, rooms
-- **Telegram:** New listings are sent with details, e.g.:
-  ```
-  Zona: Belgrano
-  Precio: $800000
-  Expensas: $150000
-  Sup. mínima: 60 m2
-  Ambientes: 3
-  https://departamento.mercadolibre.com.ar/MLA-2091232812-excelente-3-amb-flores-ver-descripcion-_JM
-  ```
+
+### CSV Export
+All scraped properties are saved to `outputs/scraped_properties.csv` with columns:
+- Basic: url, price, expenses, neighbourhood, surface, rooms, description
+- Analysis: score, score_breakdown, llm_neighbourhood, llm_surface_m2, etc.
+
+### Google Sheets (if configured)
+- **Live updates**: Real-time data accessible from anywhere
+- **Sorted by score**: Best properties appear at the top
+- **Shareable**: Easy to share with others
+- **Timestamped**: Last update time included
+
+### Telegram Notifications
+High-scoring new properties are sent with LLM analysis:
+```
+⭐ SCORE: 23
+
+📊 Score Breakdown:
+  • Location (Belgrano): +10
+  • Ground Floor: +10
+  • Outdoor Space: +3
+
+🏠 Analysis:
+  📍 Neighborhood: Belgrano
+  🌳 Ground Floor: Yes
+  🌿 Outdoor Space: Yes
+  📏 Surface: 80m²
+  💰 Price: $500,000
+
+📍 Zona: Belgrano
+💰 Precio: $500.000
+📏 Sup.: 80 m²
+🏠 Ambientes: 3
+
+https://www.zonaprop.com.ar/propiedades/...
+```
 
 ## Customization
 - Add or remove search URLs in `urls_to_scrap.txt`

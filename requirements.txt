@@ -1,2 +1,12 @@
 cloudscraper
 python-dotenv
+pandas
+requests
+beautifulsoup4
+lxml
+playwright
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+gspread

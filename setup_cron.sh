@@ -12,12 +12,15 @@ LOG_FILE="$LOG_DIR/scraprop-cron.log"
 # Ensure log directory exists
 mkdir -p "$LOG_DIR"
 
-# Remove any existing cron job for this script
-crontab -l 2>/dev/null | grep -v -F "$SCRIPT_PATH" | crontab -
+# Remove existing cron jobs for scraprop to avoid duplicates
+crontab -l 2>/dev/null | grep -v "scraprop.py" | crontab -
 
-# Cron job line: every 30 minutes
-CRON_LINE="*/30 * * * * $PYTHON_PATH $SCRIPT_PATH >> $LOG_FILE 2>&1"
+# Add new cron job - runs every 30 minutes
+(crontab -l 2>/dev/null; echo "*/30 * * * * cd /Users/mg/scraprop && /Users/mg/anaconda3/bin/python /Users/mg/scraprop/src/scraprop.py >> /Users/mg/scraprop/outputs/logs/scraprop-cron.log 2>&1") | crontab -
 
-# Add the new cron job
-(crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
-echo "Cron job set to: $CRON_LINE" 
+echo "Cron job set up successfully!"
+echo "The scraper will run every 30 minutes."
+echo "Logs will be saved to: /Users/mg/scraprop/outputs/logs/scraprop-cron.log"
+echo ""
+echo "To view current cron jobs: crontab -l"
+echo "To view logs: tail -f /Users/mg/scraprop/outputs/logs/scraprop-cron.log" 
