@@ -94,6 +94,7 @@ python src/scraprop.py
 2. **Google Sheets Update**: After saving the CSV, it automatically updates your Google Sheet
 3. **Live Data**: The Google Sheet is sorted by score (highest first) and includes a timestamp
 4. **Real-time Access**: You can view, share, and analyze the data in real-time through Google Sheets
+5. **Shared History**: Seen URLs are tracked in the Google Sheet, preventing duplicates across multiple scraper instances
 
 ## Features
 
@@ -102,6 +103,7 @@ python src/scraprop.py
 - ✅ **Timestamps**: Each update includes a timestamp
 - ✅ **All Data**: Includes all scraped data plus LLM analysis
 - ✅ **Shareable**: Easy to share with others or access from mobile
+- ✅ **Shared History**: Seen URLs tracked in sheet (prevents duplicates across instances)
 - ✅ **Backup**: CSV files are still created as backup
 
 ## Troubleshooting

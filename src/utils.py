@@ -8,6 +8,7 @@ import requests
 from dotenv import load_dotenv
 from scraper import create_scraper, PlaywrightScraper
 from sheets_manager import get_sheets_manager
+from datetime import datetime
 
 
 def load_environment():
@@ -82,13 +83,43 @@ def load_urls(file_path: str) -> List[str]:
         return [line.strip() for line in inp if line.strip()]
 
 
-def get_history(history_fp: str) -> List[str]:
-    """Load seen URLs from history file."""
+def get_history(history_fp: str, sheets_manager=None) -> List[str]:
+    """Load seen URLs from history file and/or Google Sheet."""
+    seen_urls = []
+    
+    # First, try to get from Google Sheet if available
+    if sheets_manager:
+        try:
+            sheet_urls = sheets_manager.get_seen_urls()
+            if sheet_urls:
+                seen_urls.extend(sheet_urls)
+                print(f"📊 Retrieved {len(sheet_urls)} seen URLs from Google Sheet")
+        except Exception as e:
+            print(f"⚠️  Error getting URLs from Google Sheet: {e}")
+    
+    # Also get from local file as backup/fallback
     try:
         with open(history_fp, "r") as f:
-            return [line.strip() for line in f if line.strip()]
+            file_urls = [line.strip() for line in f if line.strip()]
+            if file_urls:
+                seen_urls.extend(file_urls)
+                print(f"📁 Retrieved {len(file_urls)} seen URLs from local file")
     except FileNotFoundError:
-        return []
+        if not sheets_manager:  # Only print if no sheets manager (so we're relying on file)
+            print(f"📁 No local history file found at {history_fp}")
+    
+    # Remove duplicates while preserving order
+    unique_seen_urls = []
+    seen_set = set()
+    for url in seen_urls:
+        if url not in seen_set:
+            unique_seen_urls.append(url)
+            seen_set.add(url)
+    
+    if sheets_manager and unique_seen_urls:
+        print(f"📋 Total unique seen URLs: {len(unique_seen_urls)}")
+    
+    return unique_seen_urls
 
 
 def update_history(history_fp: str, new_urls: List[str]) -> None:
@@ -98,9 +129,9 @@ def update_history(history_fp: str, new_urls: List[str]) -> None:
             f.write(url + "\n")
 
 
-def split_seen_and_unseen(ads: List[Dict], history_fp: str) -> Tuple[List[Dict], List[Dict]]:
-    """Split ads into seen and unseen based on history."""
-    history = get_history(history_fp)
+def split_seen_and_unseen(ads: List[Dict], history_fp: str, sheets_manager=None) -> Tuple[List[Dict], List[Dict]]:
+    """Split ads into seen and unseen based on history from file and/or Google Sheet."""
+    history = get_history(history_fp, sheets_manager)
     seen = []
     unseen = []
     
@@ -168,132 +199,50 @@ def format_telegram_message(ad_url: str, search_details: tuple, property_details
     return message
 
 
-def save_properties_to_csv(properties: list, filename: str = "scraped_properties.csv", sheets_manager=None) -> None:
-    """Save scraped properties to CSV file, ensuring all fields are present including LLM analysis."""
+def save_properties_to_csv(properties: list, filename: str = "scraped_properties.csv") -> None:
+    """Save scraped properties to a CSV file for backup. This function no longer handles Google Sheets updates."""
     if not properties:
-        print("No properties to save.")
+        print("No properties to save to CSV.")
         return
-    
-    # Ensure all expected columns are present, including LLM analysis fields
-    base_columns = ['url', 'price', 'expenses', 'neighbourhood', 'surface', 'rooms', 'upload_date', 'seen_date', 'description']
-    llm_columns = [
-        'score', 'score_breakdown', 
-        'llm_neighbourhood', 'llm_is_ground_floor', 'llm_has_outdoor_space', 
-        'llm_outdoor_space_type', 'llm_surface_m2', 'llm_price_numeric',
-        'llm_near_important_avenue', 'llm_near_subway_train'
+
+    # Define the column order to match the Google Sheet for consistency
+    csv_columns = [
+        'last_updated', 'score', 'llm_price_numeric', 'llm_surface_m2',
+        'llm_is_ground_floor', 'llm_has_outdoor_space', 'llm_near_important_avenue', 'llm_near_subway_train',
+        'url', 'llm_neighbourhood', 'llm_outdoor_space_type',
+        'price', 'surface', 'neighbourhood', 'rooms', 'expenses', 'description',
+        'score_breakdown', 'upload_date', 'seen_date'
     ]
-    all_columns = base_columns + llm_columns
     
     df = pd.DataFrame(properties)
     
-    # Ensure base columns exist
-    for col in base_columns:
-        if col not in df:
-            df[col] = None
-    
+    # Add last_updated timestamp
+    df['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     # Extract LLM analysis data into separate columns
     if 'llm_analysis' in df.columns:
-        for idx, row in df.iterrows():
-            llm_analysis = row.get('llm_analysis')
-            if llm_analysis and isinstance(llm_analysis, dict):
-                df.at[idx, 'llm_neighbourhood'] = llm_analysis.get('neighbourhood', '')
-                df.at[idx, 'llm_is_ground_floor'] = llm_analysis.get('is_ground_floor', False)
-                df.at[idx, 'llm_has_outdoor_space'] = llm_analysis.get('has_outdoor_space', False)
-                df.at[idx, 'llm_outdoor_space_type'] = llm_analysis.get('outdoor_space_type', 'none')
-                df.at[idx, 'llm_surface_m2'] = llm_analysis.get('surface_m2', 0)
-                df.at[idx, 'llm_price_numeric'] = llm_analysis.get('price_numeric', 0)
-                df.at[idx, 'llm_near_important_avenue'] = llm_analysis.get('near_important_avenue', False)
-                df.at[idx, 'llm_near_subway_train'] = llm_analysis.get('near_subway_train', False)
-    
-    # Ensure LLM columns exist
-    for col in llm_columns:
-        if col not in df:
-            if col == 'score':
-                df[col] = 0
-            elif col == 'score_breakdown':
-                df[col] = ''
-            elif col in ['llm_is_ground_floor', 'llm_has_outdoor_space', 'llm_near_important_avenue', 'llm_near_subway_train']:
-                df[col] = False
-            elif col in ['llm_surface_m2', 'llm_price_numeric']:
-                df[col] = 0
-            else:
-                df[col] = ''
-    
-    # Convert score_breakdown dict to string for CSV
+        analysis_df = df['llm_analysis'].apply(lambda x: pd.Series(x) if isinstance(x, dict) else pd.Series())
+        # Add 'llm_' prefix to columns from analysis
+        analysis_df.columns = ['llm_' + str(col) for col in analysis_df.columns]
+        df = pd.concat([df.drop(['llm_analysis'], axis=1), analysis_df], axis=1)
+
+    # Format score breakdown
     if 'score_breakdown' in df.columns:
-        for idx, row in df.iterrows():
-            score_breakdown = row.get('score_breakdown')
-            if score_breakdown and isinstance(score_breakdown, dict):
-                breakdown_str = '; '.join([f"{k}: {'+' if v >= 0 else ''}{v}" for k, v in score_breakdown.items()])
-                df.at[idx, 'score_breakdown'] = breakdown_str
+        df['score_breakdown'] = df['score_breakdown'].apply(
+            lambda x: '; '.join([f"{k}: {'+' if v >= 0 else ''}{v}" for k, v in x.items()]) if isinstance(x, dict) else ''
+        )
+
+    # Ensure all columns exist, fill missing with empty string
+    for col in csv_columns:
+        if col not in df.columns:
+            df[col] = ''
     
-    # Select and reorder columns
-    df = df[all_columns]
+    # Reorder columns for the final CSV
+    df = df[csv_columns]
     
-    # Check if file exists to append or create new
-    if os.path.exists(filename):
-        existing_df = pd.read_csv(filename)
-        # Ensure existing df has all columns
-        for col in all_columns:
-            if col not in existing_df.columns:
-                if col == 'score':
-                    existing_df[col] = 0
-                elif col == 'score_breakdown':
-                    existing_df[col] = ''
-                elif col in ['llm_is_ground_floor', 'llm_has_outdoor_space', 'llm_near_important_avenue', 'llm_near_subway_train']:
-                    existing_df[col] = False
-                elif col in ['llm_surface_m2', 'llm_price_numeric']:
-                    existing_df[col] = 0
-                else:
-                    existing_df[col] = ''
-        
-        existing_df = existing_df[all_columns]  # Reorder existing df columns
-        combined_df = pd.concat([existing_df, df], ignore_index=True)
-        combined_df = combined_df.drop_duplicates(subset=['url'], keep='last')
-        combined_df.to_csv(filename, index=False)
-        print(f"Appended {len(df)} properties to {filename}")
-    else:
+    # Save to CSV
+    try:
         df.to_csv(filename, index=False)
-        print(f"Saved {len(df)} properties to {filename}")
-    
-    # Print summary of LLM analysis
-    if 'score' in df.columns:
-        # Count properties that have LLM analysis (non-null llm_neighbourhood)
-        analyzed_count = len(df[df['llm_neighbourhood'].notna()])
-        scored_count = len(df[df['score'] > 0])
-        if analyzed_count > 0:
-            avg_score = df['score'].mean()  # Average of all scores including 0
-            max_score = df['score'].max()
-            min_score = df['score'].min()
-            print(f"🤖 LLM Analysis: {analyzed_count}/{len(df)} properties analyzed")
-            print(f"📊 Scores: {scored_count} with score > 0, Average {avg_score:.1f}, Range {min_score} to {max_score}")
-    
-    # Update Google Sheets if configured
-    if sheets_manager:
-        try:
-            print("📊 Updating Google Sheets...")
-            success = sheets_manager.update_sheet(properties, clear_first=True)
-            if success:
-                print(f"✅ Google Sheets updated successfully!")
-            else:
-                print("⚠️  Google Sheets update failed")
-        except Exception as e:
-            print(f"⚠️  Google Sheets update error: {e}")
-    elif not sheets_manager:
-        # Only try to get one if not passed (for backward compatibility)
-        try:
-            sheets_manager = get_sheets_manager()
-            if sheets_manager:
-                print("📊 Updating Google Sheets...")
-                success = sheets_manager.update_sheet(properties, clear_first=True)
-                if success:
-                    print(f"✅ Google Sheets updated successfully!")
-                    sheet_url = sheets_manager.get_sheet_url()
-                    if sheet_url:
-                        print(f"🔗 View live data: {sheet_url}")
-                else:
-                    print("⚠️  Google Sheets update failed")
-            else:
-                print("ℹ️  Google Sheets not configured (add credentials to enable)")
-        except Exception as e:
-            print(f"⚠️  Google Sheets update error: {e}") 
+        print(f"✅ Successfully saved {len(df)} properties to {filename}")
+    except Exception as e:
+        print(f"❌ Error saving properties to {filename}: {e}") 

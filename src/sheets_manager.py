@@ -8,6 +8,10 @@ from typing import List, Dict, Optional
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 
 class SheetsManager:
@@ -19,6 +23,16 @@ class SheetsManager:
         self.sheet = None
         self.worksheet = None
         self.sheet_id = None
+        self.header_written = False
+        
+        # Define the desired column order
+        self.columns = [
+            'last_updated', 'score', 'llm_price_numeric', 'llm_surface_m2',
+            'llm_is_ground_floor', 'llm_has_outdoor_space', 'llm_near_important_avenue', 'llm_near_subway_train',
+            'url', 'llm_neighbourhood', 'llm_outdoor_space_type',
+            'price', 'surface', 'neighbourhood', 'rooms', 'expenses', 'description',
+            'score_breakdown', 'upload_date', 'seen_date'
+        ]
         
     def authenticate(self) -> bool:
         """
@@ -93,10 +107,15 @@ class SheetsManager:
                 # Create new sheet
                 self.sheet = self.gc.create(sheet_name)
                 self.sheet_id = self.sheet.id
-                print(f"✅ Created new Google Sheet: {self.sheet.title}")
-                print(f"📋 Sheet ID: {self.sheet_id}")
+                print()
+                print("🎉" + "="*60)
+                print("🎉 NEW GOOGLE SHEET CREATED!")
+                print("🎉" + "="*60)
+                print(f"📋 Sheet Name: {self.sheet.title}")
                 print(f"🔗 Sheet URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
                 print(f"💡 Add this to your .env file: GOOGLE_SHEET_ID={self.sheet_id}")
+                print("🎉" + "="*60)
+                print()
                 
                 # Share with your email if specified
                 share_email = os.getenv('GOOGLE_SHEETS_SHARE_EMAIL')
@@ -115,123 +134,125 @@ class SheetsManager:
             print(f"❌ Failed to setup Google Sheet: {e}")
             return False
     
-    def update_sheet(self, properties: List[Dict], clear_first: bool = False) -> bool:
+    def _ensure_header(self):
+        """Ensure the sheet has a header row. If not, write it."""
+        if self.header_written:
+            return
+            
+        try:
+            # Check only the first cell to avoid fetching the whole sheet
+            header_exists = self.worksheet.acell('A1').value is not None
+            if not header_exists:
+                print("📝 Writing header row to new sheet...")
+                self.worksheet.update('A1', [self.columns])
+            self.header_written = True
+        except Exception as e:
+            print(f"⚠️  Could not ensure header: {e}")
+            # Assume it's okay and continue
+            self.header_written = True
+            
+    def append_property(self, property_details: Dict) -> bool:
         """
-        Update the Google Sheet with property data.
+        Append a single property to the Google Sheet, adapting to the current column order.
         
         Args:
-            properties: List of property dictionaries
-            clear_first: Whether to clear the sheet before updating
+            property_details: Dictionary of the property to append
             
         Returns:
-            bool: True if update successful, False otherwise
+            bool: True if append was successful, False otherwise
         """
         if not self.worksheet:
             print("❌ Google Sheet not set up")
             return False
-            
-        if not properties:
-            print("⚠️  No properties to update")
-            return False
-            
+
         try:
-            # Convert to DataFrame for easier handling
-            df = pd.DataFrame(properties)
-            
-            # Ensure all expected columns are present
-            base_columns = ['url', 'price', 'expenses', 'neighbourhood', 'surface', 'rooms', 'upload_date', 'seen_date', 'description']
-            llm_columns = [
-                'score', 'score_breakdown', 
-                'llm_neighbourhood', 'llm_is_ground_floor', 'llm_has_outdoor_space', 
-                'llm_outdoor_space_type', 'llm_surface_m2', 'llm_price_numeric',
-                'llm_near_important_avenue', 'llm_near_subway_train'
-            ]
-            all_columns = base_columns + llm_columns
-            
-            # Ensure all columns exist
-            for col in all_columns:
-                if col not in df.columns:
-                    if col == 'score':
-                        df[col] = 0
-                    elif col == 'score_breakdown':
-                        df[col] = ''
-                    elif col in ['llm_is_ground_floor', 'llm_has_outdoor_space', 'llm_near_important_avenue', 'llm_near_subway_train']:
-                        df[col] = False
-                    elif col in ['llm_surface_m2', 'llm_price_numeric']:
-                        df[col] = 0
-                    else:
-                        df[col] = ''
-            
-            # Process LLM analysis data
-            if 'llm_analysis' in df.columns:
-                for idx, row in df.iterrows():
-                    llm_analysis = row.get('llm_analysis')
-                    if llm_analysis and isinstance(llm_analysis, dict):
-                        df.at[idx, 'llm_neighbourhood'] = llm_analysis.get('neighbourhood', '')
-                        df.at[idx, 'llm_is_ground_floor'] = llm_analysis.get('is_ground_floor', False)
-                        df.at[idx, 'llm_has_outdoor_space'] = llm_analysis.get('has_outdoor_space', False)
-                        df.at[idx, 'llm_outdoor_space_type'] = llm_analysis.get('outdoor_space_type', 'none')
-                        df.at[idx, 'llm_surface_m2'] = llm_analysis.get('surface_m2', 0)
-                        df.at[idx, 'llm_price_numeric'] = llm_analysis.get('price_numeric', 0)
-                        df.at[idx, 'llm_near_important_avenue'] = llm_analysis.get('near_important_avenue', False)
-                        df.at[idx, 'llm_near_subway_train'] = llm_analysis.get('near_subway_train', False)
-            
-            # Convert score_breakdown dict to string
-            if 'score_breakdown' in df.columns:
-                for idx, row in df.iterrows():
-                    score_breakdown = row.get('score_breakdown')
-                    if score_breakdown and isinstance(score_breakdown, dict):
-                        breakdown_str = '; '.join([f"{k}: {'+' if v >= 0 else ''}{v}" for k, v in score_breakdown.items()])
-                        df.at[idx, 'score_breakdown'] = breakdown_str
-            
-            # Select and reorder columns
-            df = df[all_columns]
-            
-            # Add timestamp column
-            df.insert(0, 'last_updated', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            
-            # Sort by score (highest first)
-            df = df.sort_values('score', ascending=False)
-            
-            # Clear the sheet if requested
-            if clear_first:
-                self.worksheet.clear()
-            
-            # Convert DataFrame to list of lists for upload
-            values = [df.columns.tolist()] + df.values.tolist()
-            
-            # Update the sheet
-            if clear_first:
-                self.worksheet.update('A1', values)
-            else:
-                # Check if we need to update existing data or append
-                existing_data = self.worksheet.get_all_values()
-                if len(existing_data) <= 1:  # Only headers or empty
-                    self.worksheet.update('A1', values)
-                else:
-                    # For now, let's replace all data to keep it simple
-                    self.worksheet.clear()
-                    self.worksheet.update('A1', values)
-            
-            print(f"✅ Updated Google Sheet with {len(df)} properties")
-            print(f"🔗 Sheet URL: https://docs.google.com/spreadsheets/d/{self.sheet_id}")
-            
+            # 1. Ensure a header row exists
+            self._ensure_header()
+
+            # 2. Fetch the current header to get the column order
+            header = self.worksheet.row_values(1)
+            if not header:
+                print("❌ Cannot append: Sheet header is empty.")
+                return False
+
+            # 3. Flatten the property data into a single dictionary
+            flat_property = self._flatten_property(property_details)
+
+            # 4. Build the row in the correct order
+            row_to_append = [flat_property.get(col, '') for col in header]
+
+            # 5. Append the new row to the sheet
+            self.worksheet.append_row(row_to_append, value_input_option='USER_ENTERED')
             return True
-            
+
         except Exception as e:
-            print(f"❌ Failed to update Google Sheet: {e}")
+            print(f"❌ Failed to append property to Google Sheet: {e}")
             return False
-    
+
+    def _flatten_property(self, property_details: Dict) -> Dict:
+        """Flatten the nested property dictionary into a single level."""
+        flat_data = {}
+
+        # Copy top-level keys
+        for key, value in property_details.items():
+            if key not in ['llm_analysis', 'score_breakdown']:
+                flat_data[key] = value
+
+        # Flatten llm_analysis
+        llm_analysis = property_details.get('llm_analysis', {})
+        if llm_analysis and isinstance(llm_analysis, dict):
+            flat_data['llm_neighbourhood'] = llm_analysis.get('neighbourhood', '')
+            flat_data['llm_is_ground_floor'] = llm_analysis.get('is_ground_floor', False)
+            flat_data['llm_has_outdoor_space'] = llm_analysis.get('has_outdoor_space', False)
+            flat_data['llm_outdoor_space_type'] = llm_analysis.get('outdoor_space_type', 'none')
+            flat_data['llm_surface_m2'] = llm_analysis.get('surface_m2', 0)
+            flat_data['llm_price_numeric'] = llm_analysis.get('price_numeric', 0)
+            flat_data['llm_near_important_avenue'] = llm_analysis.get('near_important_avenue', False)
+            flat_data['llm_near_subway_train'] = llm_analysis.get('near_subway_train', False)
+
+        # Convert score_breakdown dict to string
+        score_breakdown = property_details.get('score_breakdown', {})
+        if score_breakdown and isinstance(score_breakdown, dict):
+            breakdown_str = '; '.join([f"{k}: {'+' if v >= 0 else ''}{v}" for k, v in score_breakdown.items()])
+            flat_data['score_breakdown'] = breakdown_str
+        else:
+             flat_data['score_breakdown'] = ''
+
+        # Add timestamp
+        flat_data['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        return flat_data
+
     def get_sheet_url(self) -> Optional[str]:
         """Get the URL of the Google Sheet."""
         if self.sheet_id:
             return f"https://docs.google.com/spreadsheets/d/{self.sheet_id}"
         return None
-
+        
+    def get_seen_urls(self) -> List[str]:
+        """Get all previously seen URLs from the 'url' column in the sheet."""
+        if not self.worksheet:
+            return []
+        
+        try:
+            print("Fetching seen URLs from Google Sheet...")
+            header = self.worksheet.row_values(1)
+            if 'url' not in header:
+                print("⚠️  'url' column not found in sheet header. Cannot fetch seen URLs.")
+                return []
+            
+            url_col_index = header.index('url') + 1  # gspread is 1-indexed
+            urls = self.worksheet.col_values(url_col_index)[1:] # Skip header
+            print(f"Found {len(urls)} seen URLs in the sheet.")
+            return urls
+        except Exception as e:
+            print(f"⚠️  Could not get seen URLs from sheet: {e}")
+            return []
 
 def get_sheets_manager() -> Optional[SheetsManager]:
-    """Get a SheetsManager instance if credentials are available."""
+    """Factory function to get a configured SheetsManager instance."""
     manager = SheetsManager()
-    if manager.authenticate() and manager.setup_sheet():
-        return manager
+    if manager.authenticate():
+        if manager.setup_sheet():
+            return manager
     return None 

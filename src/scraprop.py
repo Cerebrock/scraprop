@@ -108,8 +108,15 @@ def main(max_properties: int = None):
             print("✅ Google Sheets initialized successfully")
             sheet_url = sheets_manager.get_sheet_url()
             if sheet_url:
-                print(f"📊 Live Google Sheet: {sheet_url}")
+                print()
+                print("📊" + "="*60)
+                print("📊 LIVE GOOGLE SHEET READY!")
+                print("📊" + "="*60)
+                print(f"🔗 Sheet URL: {sheet_url}")
                 print("💡 You can monitor real-time updates at this link!")
+                print("🚀 Properties will be automatically updated as scraping progresses")
+                print("📊" + "="*60)
+                print()
         else:
             print("ℹ️  Google Sheets not configured (add credentials to enable)")
     except Exception as e:
@@ -159,35 +166,19 @@ def main(max_properties: int = None):
                 
                 # Remove duplicates
                 ads = [dict(t) for t in {tuple(d.items()) for d in ads}]
-                seen, unseen = split_seen_and_unseen(ads, history_fp)
+                seen, unseen = split_seen_and_unseen(ads, history_fp, sheets_manager)
                 
                 print(f"[{datetime.now()}] {len(seen)} seen, {len(unseen)} unseen for {url}")
                 
-                # Process seen ads for CSV only
-                for ad in seen:
-                    if max_properties and property_count >= max_properties:
-                        break
-                    try:
-                        ad_html = get_html(ad['url'])
-                        if ad_html:
-                            property_details = extract_property_details(ad['url'], ad_html)
-                            
-                            # Add LLM analysis if scorer is available
-                            if scorer:
-                                print(f"[{datetime.now()}] 🤖 Analyzing property with LLM: {ad['url']}...")
-                                property_details = scorer.analyze_property(property_details)
-                                sleep(1)  # Rate limiting for LLM API
-                            
-                            all_properties.append(property_details)
-                            property_count += 1
-                            sleep(1)  # Be respectful to the servers
-                    except Exception as e:
-                        print(f"[{datetime.now()}] Error extracting details from {ad['url']}: {e}")
+                # Note: We are no longer processing 'seen' ads in detail here to avoid hitting the
+                # max_properties limit before we get to the new ones. The CSV backup will be created
+                # from the 'all_properties' list which only contains new items from this run.
                 
                 # Process unseen ads for both CSV and notifications
                 if unseen:
                     search_details = parse_search_details(url)
                     
+                    newly_processed_urls = []
                     for ad in unseen:
                         if max_properties and property_count >= max_properties:
                             break
@@ -203,31 +194,32 @@ def main(max_properties: int = None):
                                     property_details = scorer.analyze_property(property_details)
                                     sleep(1)  # Rate limiting for LLM API
                                 
-                                # Add to CSV data
+                                # Add to list for final CSV backup
                                 all_properties.append(property_details)
                                 property_count += 1
+                                newly_processed_urls.append(ad['url'])
                                 
-                                # !!! Removed immediate Telegram notification sending
-                                # if scorer and 'llm_analysis' in property_details:
-                                #     message = format_enhanced_telegram_message(property_details, search_details)
-                                # else:
-                                #     message = format_telegram_message(ad['url'], search_details, property_details)
-                                # 
-                                # success = notify_telegram(env['telegram_bot_id'], env['telegram_id'], message)
-                                # if success:
-                                #     print(f"[{datetime.now()}] Notification sent for: {ad['url']}")
-                                # else:
-                                #     print(f"[{datetime.now()}] Failed to send notification for: {ad['url']}")
-                                # sleep(1)  # Rate limiting
+                                # Append to Google Sheet one-by-one
+                                if sheets_manager:
+                                    print(f"[{datetime.now()}] 📊 Appending to Google Sheet: {ad['url']}")
+                                    sheets_manager.append_property(property_details)
+                                
+                                # Send Telegram notification if it has a positive score
+                                if property_details.get('score', 0) > 0:
+                                    message = format_enhanced_telegram_message(property_details, search_details)
+                                    success = notify_telegram(env['telegram_bot_id'], env['telegram_id'], message)
+                                    if success:
+                                        print(f"[{datetime.now()}]  - Telegram Notification sent for: {ad['url']}")
+                                    else:
+                                        print(f"[{datetime.now()}] ❌ Failed to send notification for: {ad['url']}")
+                                    sleep(1) # Rate limiting
+                                    
                         except Exception as e:
                             print(f"[{datetime.now()}] Error processing unseen ad {ad['url']}: {e}")
-                            # Still try to send notification without details (this will be handled by post-processing now)
-                            # message = format_telegram_message(ad['url'], search_details)
-                            # notify_telegram(env['telegram_bot_id'], env['telegram_id'], message)
                     
-                    # Update history with new URLs
-                    new_urls = [ad['url'] for ad in unseen]
-                    update_history(history_fp, new_urls)
+                    # Update history with the newly processed URLs
+                    if newly_processed_urls:
+                        update_history(history_fp, newly_processed_urls)
                 
                 break  # Success, exit retry loop
                 
@@ -239,45 +231,10 @@ def main(max_properties: int = None):
                 else:
                     print(f"[{datetime.now()}] Failed to scrape {url} after {max_retries} attempts")
     
-    # After scraping all URLs, sort properties by score and send them
-    print(f"[{datetime.now()}] 🚀 Sorting and sending properties by score...")
-    
-    # Filter properties that have been scored and sort them by score
-    scored_properties_to_notify = [prop for prop in all_properties if prop.get('score', 0) > 0]
-    
-    scored_properties_to_notify.sort(key=lambda x: x.get('score', 0), reverse=True)
-    
-    TELEGRAM_BOT_TOKEN = env['telegram_bot_id']
-    TELEGRAM_CHAT_ID = env['telegram_id']
-
-    # Send separator message at the start of the batch
-    if scored_properties_to_notify and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-        separator_message = "—" * 30 + "\n🏠 NEW PROPERTY BATCH\n" + "—" * 30
-        notify_telegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, separator_message)
-        sleep(1)
-
-    for prop in scored_properties_to_notify:
-        # The search_details tuple (search_url, num_ads_found) is not directly available per property here.
-        # We can pass a generic placeholder as format_enhanced_telegram_message expects it.
-        # The important info is already in the property_details dict.
-        message = format_enhanced_telegram_message(prop, ('Scraped from multiple searches', len(scored_properties_to_notify)))
-        
-        if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-            success = notify_telegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
-            if success:
-                print(f"[{datetime.now()}] Notification sent for: {prop.get('url', 'N/A')}")
-            else:
-                print(f"[{datetime.now()}] Failed to send notification for: {prop.get('url', 'N/A')}")
-            sleep(1) # Add delay between sending messages
-        else:
-            print(f"[{datetime.now()}] Telegram BOT_TOKEN or CHAT_ID not set. Skipping Telegram notification.")
-            print(f"[{datetime.now()}] --- Property Score: {prop.get('score', 0)} --- URL: {prop.get('url', 'N/A')}")
-            print(message)
-
-    # Save all properties to CSV after processing all URLs
+    # After scraping all URLs, save all properties to the CSV for backup
     if all_properties:
-        save_properties_to_csv(all_properties, csv_filename, sheets_manager)
-        print(f"[{datetime.now()}] Scraped {len(all_properties)} total properties")
+        print(f"\n[{datetime.now()}] 💾 Saving {len(all_properties)} properties to CSV backup...")
+        save_properties_to_csv(all_properties, csv_filename)
     
     print(f"[{datetime.now()}] Scraping and analysis complete!")
 

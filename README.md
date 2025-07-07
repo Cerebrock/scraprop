@@ -51,9 +51,10 @@ Set up live Google Sheets for real-time property data viewing:
 2. **Test the integration**: Run `python test_google_sheets.py`
 3. **Features**:
    - Automatic updates with every scraper run
-   - Data sorted by LLM score (best properties first)
+   - Data sorted by LLM score (best properties first) 
    - Shareable with colleagues or family
    - Includes timestamps and all analysis data
+   - **Shared history**: Seen URLs tracked in Google Sheet (no more duplicate notifications)
 
 ## Running
 - To run the main workflow:

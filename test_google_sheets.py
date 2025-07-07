@@ -130,6 +130,16 @@ def test_google_sheets():
         print("   • Medium-scoring property (Palermo, score: 15)")
         print("   • Penalized commercial property (score: 0)")
         print("\n✨ The sheet should be sorted by score (highest first)")
+        
+        # Test the seen URLs functionality
+        print("\n3. Testing seen URLs functionality...")
+        seen_urls = manager.get_seen_urls()
+        print(f"📋 Retrieved {len(seen_urls)} URLs from the sheet")
+        if seen_urls:
+            print("   Sample URLs:")
+            for url in seen_urls[:2]:  # Show first 2 URLs
+                print(f"   • {url}")
+        
         return True
     else:
         print("❌ Sheet update failed")
