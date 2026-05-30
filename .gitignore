@@ -1,4 +1,17 @@
 .env
 *.pyc
-
 __pycache__/
+
+# secretos / config privada (con su .example público)
+searches.txt
+prompt.txt
+marcadas.txt
+Favoritos.html
+
+# data & runtime artifacts
+data/
+outputs/
+*.db
+storage_state.json
+.venv/
+venv/

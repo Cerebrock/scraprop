@@ -1,12 +1,13 @@
-cloudscraper
-python-dotenv
-pandas
-requests
+# HTTP + parsing
 beautifulsoup4
 lxml
-playwright
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
-gspread
+requests
+python-dotenv
+
+# Stealth browser for MercadoLibre (anti-bot challenge).
+# patchright is an undetected fork of playwright; install browser with:
+#   patchright install chromium
+patchright
+
+# LLM scorer
+google-genai

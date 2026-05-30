@@ -1,0 +1,15 @@
+# EJEMPLO público de URLs de búsqueda. Copiá este archivo a `searches.txt` (privado,
+# gitignored) y poné tus propias URLs — por ejemplo una búsqueda con polígono dibujado a
+# mano en el mapa de MercadoLibre, que NO conviene compartir.
+#
+# Una URL por línea. Si existe searches.txt, reemplaza a este ejemplo.
+# Patrón simple por barrio (sin polígono):
+
+https://listado.mercadolibre.com.ar/inmuebles/ph/venta/capital-federal/chacarita/
+https://listado.mercadolibre.com.ar/inmuebles/ph/venta/capital-federal/colegiales/
+https://listado.mercadolibre.com.ar/inmuebles/ph/venta/capital-federal/villa-urquiza/
+https://listado.mercadolibre.com.ar/inmuebles/departamentos/venta/capital-federal/belgrano/
+https://listado.mercadolibre.com.ar/inmuebles/casas/venta/bsas-gba-norte/vicente-lopez/florida/
+
+# Tip: para una búsqueda con polígono, dibujá la zona en ML (vista mapa) y pegá acá la URL
+# resultante (contiene "polygon_location=...").
