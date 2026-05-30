@@ -17,12 +17,12 @@ mkdir -p "$LOG_DIR"
 # Quitar entradas previas de scraprop para no duplicar
 crontab -l 2>/dev/null | grep -v "scraprop" | crontab -
 
-# Monitoreo cada 30 min + digest diario top-5 a las 9:00.
+# Monitoreo cada 30 min (NO entre 2am y 9am) + digest diario top-5 a las 9:00.
 (crontab -l 2>/dev/null; \
- echo "*/30 * * * * cd $REPO_DIR && $PYTHON_PATH -m scraprop >> $LOG_FILE 2>&1"; \
+ echo "*/30 0,1,9-23 * * * cd $REPO_DIR && $PYTHON_PATH -m scraprop >> $LOG_FILE 2>&1"; \
  echo "0 9 * * * cd $REPO_DIR && $PYTHON_PATH -m scraprop digest >> $LOG_FILE 2>&1") | crontab -
 
-echo "✅ Cron configurado. Monitoreo cada 30 min + digest top-5 diario (9:00)."
+echo "✅ Cron configurado. Monitoreo c/30min (excepto 2-9am) + digest top-5 (9:00)."
 echo "   Python:  $PYTHON_PATH"
 echo "   Repo:    $REPO_DIR"
 echo "   Log:     $LOG_FILE"
