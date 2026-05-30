@@ -35,7 +35,7 @@ def format_message(listing: Listing, r: ScoreResult) -> str:
     bp, op, pp = _pts(r.breakdown, "Barrio"), _pts(r.breakdown, "Exterior"), _pts(r.breakdown, "Precio")
     badge = f"  {_STATUS_BADGE[listing.status]}" if listing.status in _STATUS_BADGE else ""
 
-    lines = [f"🏡 <b>{r.neighbourhood or 'Propiedad'}</b> · ⭐ <b>{r.score:g}</b>{badge}"]
+    lines = [f"🏡 <b>{r.neighbourhood or 'Propiedad'}</b> · ⭐ <b>{r.score:g}/10</b>{badge}"]
     if listing.title:
         t = listing.title if len(listing.title) <= 75 else listing.title[:72] + "…"
         lines.append(f"<i>{t}</i>")
@@ -64,10 +64,7 @@ def format_message(listing: Listing, r: ScoreResult) -> str:
         lines.append(f"• 🚆 a ≤4 cuadras de {', '.join(prox)}")
     for con in [p for p in r.summary.split() if p.startswith("-")]:
         lines.append(f"• ⚠️ {con[1:]}")
-
-    lines.append(f'📱 <a href="{deeplink(listing.listing_id)}">app</a> · '
-                 f'🌐 <a href="{listing.url}">web</a>')
-    return "\n".join(lines)
+    return "\n".join(lines)  # el link va en el botón inline (alert_buttons)
 
 
 def alert_buttons(listing: Listing) -> list:
@@ -81,26 +78,20 @@ def format_top5(rows: list[dict]) -> str:
     if not rows:
         return title + "\n(sin propiedades que cumplan los filtros todavía)"
 
-    header = "⭐  Barrio       USD   m²  Resumen"
+    header = "⭐/10 Barrio       USD   m²  Resumen"
     table = [header, "─" * len(header)]
     for row in rows:
-        score = f"{row.get('score') or 0:g}".ljust(3)
+        st = row.get("status")
+        mark = "⏸" if st == "pausada" else " "
+        score = f"{row.get('score') or 0:g}".ljust(4)
         nb = (row.get("neighbourhood") or "?")[:11].ljust(11)
         price = row.get("price_usd")
         price_s = (f"{price/1000:.0f}k" if price else "?").ljust(4)
         surf = str(row.get("surface_m2") or "?").ljust(3)
         summ = row.get("summary") or ""
-        table.append(f"{score} {nb} {price_s} {surf} {summ}")
+        table.append(f"{mark}{score}{nb} {price_s} {surf} {summ}")
     pre = "<pre>" + "\n".join(table) + "</pre>"
-
-    links = []
-    for row in rows:
-        st = row.get("status")
-        badge = f" {_STATUS_BADGE[st]}" if st in _STATUS_BADGE else ""
-        app = deeplink(row.get("listing_id", ""))
-        links.append(f'<b>{row.get("neighbourhood") or "ver"}</b> ⭐{row.get("score") or 0:g}: '
-                     f'<a href="{app}">📱</a> · <a href="{row.get("url")}">🌐</a>{badge}')
-    return f"{title}\n\n{pre}\n\n" + "\n".join(links)
+    return f"{title}\n\n{pre}"  # los links van en los botones inline (top5_buttons)
 
 
 def top5_buttons(rows: list[dict]) -> list:

@@ -169,6 +169,18 @@ def price_points(price_usd: Optional[float]) -> float:
     return 0.0
 
 
+# Puntaje máximo posible (mejor barrio + mejor exterior + mejor banda de precio), para
+# normalizar el score a /10.
+MAX_SCORE = (max(n.points for n in NEIGHBOURHOODS)
+             + max(OUTDOOR_POINTS.values())
+             + max(p for _, _, p in PRICE_BANDS))
+
+
+def normalize_score(raw: float) -> float:
+    """Escala el puntaje crudo a /10."""
+    return round(raw / MAX_SCORE * 10, 1) if MAX_SCORE else round(raw, 1)
+
+
 def outdoor_points(outdoor_types: list[str]) -> tuple[float, Optional[str]]:
     """Puntos del mejor espacio exterior presente y su tipo."""
     best_pts, best_type = 0.0, None

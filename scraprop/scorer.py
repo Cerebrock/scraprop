@@ -187,7 +187,7 @@ class Scorer:
         pp = config.price_points(price_usd)
         if pp:
             breakdown[f"Precio (USD {price_usd:,.0f})"] = pp
-        score = round(sum(breakdown.values()), 2)
+        score = config.normalize_score(sum(breakdown.values()))  # /10
 
         # ----- resumen de ventajas/desventajas ----- #
         summary_parts = [f"+{t}" for t in outdoor_types]

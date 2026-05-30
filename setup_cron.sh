@@ -3,7 +3,12 @@
 # Uso: bash setup_cron.sh
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_PATH="$(command -v python3 || command -v python)"
+# Preferir el venv del repo (tiene las dependencias); si no, el python del sistema.
+if [ -x "$REPO_DIR/.venv/bin/python" ]; then
+  PYTHON_PATH="$REPO_DIR/.venv/bin/python"
+else
+  PYTHON_PATH="$(command -v python3 || command -v python)"
+fi
 LOG_DIR="$REPO_DIR/outputs/logs"
 LOG_FILE="$LOG_DIR/scraprop-cron.log"
 
