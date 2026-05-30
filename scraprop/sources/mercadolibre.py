@@ -206,34 +206,28 @@ class MercadoLibre(SourceAdapter):
                     if listing.rooms:
                         break
 
-        # Nota: ML no expone la fecha de publicación en el HTML público (solo "Publicado por
-        # <vendedor>", sin fecha). Cualquier "hace X años" del detalle corresponde a la
-        # antigüedad del vendedor, no de la publicación, así que NO se parsea (daría falsos
-        # positivos). La frescura se aproxima con el backfill de la primera corrida.
+        # ML no expone la fecha de publicación; la frescura se aproxima con el backfill.
 
-        # estado de la publicación (activa / pausada / finalizada / no disponible)
+        # Open Graph: datos limpios provistos por ML (título, descripción, imagen).
+        def _og(prop):
+            m = soup.find("meta", property=prop)
+            return m.get("content") if m and m.get("content") else None
+        og_title, og_desc, og_image = _og("og:title"), _og("og:description"), _og("og:image")
+        if og_image:
+            listing.image = og_image  # imagen confiable para el preview
+
+        # Estado: SOLO banners específicos de ML (evitar falsos positivos de frases genéricas
+        # como "no está disponible", que aparece en disclaimers de cualquier página).
         low = html.lower()
         if "publicación pausada" in low or "publicacion pausada" in low:
             listing.status = "pausada"
-        elif ("publicación finalizada" in low or "publicacion finalizada" in low
-              or "esta publicación finalizó" in low or "finalizó" in low):
+        elif "publicación finalizada" in low or "publicacion finalizada" in low:
             listing.status = "finalizada"
-        elif "no está disponible" in low or "no esta disponible" in low:
-            listing.status = "no disponible"
-        elif listing.price or soup.select_one("h1.ui-pdp-title"):
+        else:
             listing.status = "activa"
 
-        # descripción
         desc_el = soup.select_one(".ui-pdp-description__content")
         description = desc_el.get_text(" ", strip=True) if desc_el else ""
-
-        # ubicación: la card de búsqueda ya trae la dirección completa y confiable
-        # (ej "José A. Cabrera 3420, Palermo, Capital Federal"). El detalle no tiene un
-        # selector estable de dirección, así que NO lo pisamos con texto poco confiable.
-        if not listing.neighbourhood_raw:
-            loc_el = soup.select_one(".ui-pdp-media__title")
-            if loc_el:
-                listing.neighbourhood_raw = loc_el.get_text(" ", strip=True)
 
         # JSON-LD como respaldo de precio/dirección
         if not listing.price_usd:
@@ -254,15 +248,11 @@ class MercadoLibre(SourceAdapter):
                     if not listing.address and isinstance(addr, dict):
                         listing.address = addr.get("streetAddress") or addr.get("addressLocality")
 
-        # blob de texto para el LLM
+        # Filosofía: extraer amplio (texto limpio: OG + card + specs + descripción) y dejar
+        # que el LLM parsee barrio/exterior/cercanía. NO usamos selectores frágiles de barrio.
         spec_txt = " | ".join(f"{k}: {v}" for k, v in specs.items())
         listing.description = " | ".join(
-            x for x in [
-                listing.title,
-                listing.neighbourhood_raw,
-                listing.address,
-                spec_txt,
-                description,
-            ] if x
+            x for x in [og_title, listing.neighbourhood_raw, listing.address,
+                        spec_txt, description, og_desc] if x
         )
         return listing

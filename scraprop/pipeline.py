@@ -32,6 +32,34 @@ def _cheap_prefilter(listing: Listing) -> Optional[str]:
     return None
 
 
+_ERR_FILE = config.DATA_DIR / ".last_error"
+
+
+def _notify_failure(settings, message: str, throttle_hours: int = 6) -> None:
+    """Avisa por Telegram que algo falló, con throttle para no spamear si queda roto."""
+    import time
+    now = time.time()
+    try:
+        if _ERR_FILE.exists() and now - float(_ERR_FILE.read_text() or 0) < throttle_hours * 3600:
+            print(f"  (fallo ya avisado hace <{throttle_hours}h, no re-aviso)")
+            return
+    except Exception:
+        pass
+    try:
+        _ERR_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _ERR_FILE.write_text(str(now))
+    except Exception:
+        pass
+    notify.send(settings, f"❌ <b>scraprop falló</b>\n{message}")
+
+
+def _clear_failure() -> None:
+    try:
+        _ERR_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def _append_csv(record: dict) -> None:
     config.CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
     new = not config.CSV_PATH.exists()
@@ -63,71 +91,89 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
 
     scorer = Scorer(settings)
 
-    # 1) recolectar candidatas (páginas de búsqueda)
     candidates: list[tuple] = []  # (source, listing)
     seen_ids: set[str] = set()
-    with BrowserSession() as session:
-        for source in SOURCES:
-            for url in source.search_urls():
-                print(f"\n[{datetime.now():%H:%M:%S}] 🔎 {url}")
-                html = session.get(url, wait_selector=source.search_wait_selector)
-                if not html:
+    total_searches = blocked_searches = 0
+    notified = 0
+    try:
+        with BrowserSession() as session:
+            # 1) recolectar candidatas (páginas de búsqueda)
+            for source in SOURCES:
+                for url in source.search_urls():
+                    total_searches += 1
+                    print(f"\n[{datetime.now():%H:%M:%S}] 🔎 {url}")
+                    html = session.get(url, wait_selector=source.search_wait_selector)
+                    if not html:
+                        blocked_searches += 1
+                        continue
+                    listings = source.parse_search(html, url)
+                    print(f"  → {len(listings)} cards")
+                    for listing in listings:
+                        if listing.listing_id in seen_ids or db.has_id(listing.listing_id):
+                            continue
+                        if _cheap_prefilter(listing):
+                            continue
+                        seen_ids.add(listing.listing_id)
+                        candidates.append((source, listing))
+
+            print(f"\n[{datetime.now():%H:%M:%S}] 🆕 {len(candidates)} candidatas nuevas")
+            if limit:
+                candidates = candidates[:limit]
+                print(f"  🔬 Limitado a {len(candidates)}")
+
+            # 2) detalle + LLM + reglas
+            for i, (source, listing) in enumerate(candidates, 1):
+                print(f"\n[{i}/{len(candidates)}] {listing.url}")
+                detail_html = session.get(listing.url, wait_selector=source.detail_wait_selector,
+                                           scroll=True)
+                if detail_html:
+                    listing = source.parse_detail(detail_html, listing)
+
+                result = scorer.evaluate(listing)
+                signature = content_signature(
+                    result.neighbourhood, result.price_usd, result.surface_m2, listing.rooms
+                )
+                dup = db.has_signature(signature)
+                status = "✅ PASA" if result.passed else "✋ descartada"
+                if dup:
+                    status += " (repost duplicado)"
+                print(f"  {status} score={result.score} "
+                      f"{'| ' + ', '.join(result.failed) if result.failed else ''}")
+
+                record = _build_record(listing, result, signature, notified=False)
+                if dry_run:
                     continue
-                listings = source.parse_search(html, url)
-                print(f"  → {len(listings)} cards")
-                for listing in listings:
-                    if listing.listing_id in seen_ids or db.has_id(listing.listing_id):
-                        continue
-                    reason = _cheap_prefilter(listing)
-                    if reason:
-                        continue
-                    seen_ids.add(listing.listing_id)
-                    candidates.append((source, listing))
 
-        print(f"\n[{datetime.now():%H:%M:%S}] 🆕 {len(candidates)} candidatas nuevas")
-        if limit:
-            candidates = candidates[:limit]
-            print(f"  🔬 Limitado a {len(candidates)}")
+                available = listing.status not in ("finalizada", "no disponible")
+                should_notify = result.passed and not dup and not backfill and available
+                if should_notify:
+                    msg = notify.format_message(listing, result)
+                    if notify.send(settings, msg, photo=listing.image,
+                                   buttons=notify.alert_buttons(listing)):
+                        notified += 1
+                        record["notified"] = 1
+                        print("  📨 Notificado por Telegram")
+                db.upsert(record)
+                _append_csv(_flat_record(listing, result, signature))
 
-        # 2) detalle + LLM + reglas
-        notified = 0
-        for i, (source, listing) in enumerate(candidates, 1):
-            print(f"\n[{i}/{len(candidates)}] {listing.url}")
-            detail_html = session.get(listing.url, wait_selector=source.detail_wait_selector,
-                                       scroll=True)
-            if detail_html:
-                listing = source.parse_detail(detail_html, listing)
+        # Aviso de fallo: si TODAS las búsquedas se bloquearon, la sesión venció.
+        if not dry_run and total_searches and blocked_searches == total_searches:
+            _notify_failure(settings,
+                "🔒 Todas las búsquedas dieron login-wall/bloqueo. Probablemente venció la "
+                "sesión de ML.\nCorré: <code>python -m scraprop login</code>")
+        elif not dry_run:
+            _clear_failure()  # corrida sana → reseteamos el estado de error
 
-            result = scorer.evaluate(listing)
-            signature = content_signature(
-                result.neighbourhood, result.price_usd, result.surface_m2, listing.rooms
-            )
-
-            dup = db.has_signature(signature)
-            status = "✅ PASA" if result.passed else "✋ descartada"
-            if dup:
-                status += " (repost duplicado)"
-            print(f"  {status} score={result.score} "
-                  f"{'| ' + ', '.join(result.failed) if result.failed else ''}")
-
-            record = _build_record(listing, result, signature, notified=False)
-            if dry_run:
-                continue
-
-            should_notify = result.passed and not dup and not backfill
-            if should_notify:
-                msg = notify.format_message(listing, result)
-                ok = notify.send(settings, msg, buttons=notify.alert_buttons(listing),
-                                 preview_url=listing.url)
-                if ok:
-                    notified += 1
-                    record["notified"] = 1
-                    print("  📨 Notificado por Telegram")
-            db.upsert(record)
-            _append_csv(_flat_record(listing, result, signature))
-
-    print(f"\n[{datetime.now():%H:%M:%S}] ✅ Fin. {notified} notificadas.")
-    db.close()
+        print(f"\n[{datetime.now():%H:%M:%S}] ✅ Fin. {notified} notificadas.")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        if not dry_run:
+            _notify_failure(settings,
+                f"💥 Excepción en la corrida:\n<code>{type(e).__name__}: {e}</code>")
+        raise
+    finally:
+        db.close()
 
 
 def digest(n: int = 5, only_passed: bool = True) -> None:

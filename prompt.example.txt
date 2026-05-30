@@ -7,17 +7,15 @@ Datos:
 - Superficie: {surface}
 - Descripción: {description}
 
-Barrios canónicos válidos: chacarita, coghlan, palermo, belgrano, saavedra, nunez,
-florida este, vicente lopez, colegiales, villa urquiza.
-
 IMPORTANTE: NO inventes. Si la descripción no menciona explícitamente un espacio exterior
 (balcón/terraza/jardín/patio), devolvé outdoor_spaces vacío. Si no hay información de
 cercanía a avenida/subte/tren, devolvé false. Mejor falso-negativo que inventar.
+Extraé el barrio del texto (dirección/descripción), no inventes uno.
 
 Devolvé exactamente este JSON:
 {{
   "property_type": "departamento|ph|casa|local|cochera|terreno|oficina|deposito|otro",
-  "neighbourhood": "<uno de los barrios canónicos, o 'otro'>",
+  "neighbourhood": "<el barrio real, ej Palermo, Villa Crespo, Vicente López, Saavedra>",
   "surface_m2_total": <numero o null>,
   "outdoor_spaces": [<subconjunto de "balcon","terraza","jardin","patio">],
   "near_avenue": <true|false, a menos de ~4 cuadras de una avenida principal>,

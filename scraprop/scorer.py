@@ -205,14 +205,17 @@ class Scorer:
                 summary_parts.append(tag)
         summary = " ".join(summary_parts)
 
-        # display del barrio: el canónico si matchea; si no, el del raw (ej "Villa Crespo")
+        # display del barrio: el canónico si matchea; si no, el que extrajo el LLM
+        # (ej "Villa Crespo"); último recurso, el raw de la card.
         if nb:
             display_nb = nb.display
         else:
-            raw = listing.neighbourhood_raw or listing.address or ""
-            parts = [p.strip() for p in raw.split(",") if p.strip()]
-            display_nb = parts[1] if len(parts) >= 2 else (
-                parts[0] if parts else (ext.get("neighbourhood") or None))
+            cand = (ext.get("neighbourhood") or "").strip()
+            display_nb = cand if cand and cand.lower() != "otro" else None
+            if not display_nb:
+                raw = listing.neighbourhood_raw or listing.address or ""
+                parts = [p.strip() for p in raw.split(",") if p.strip()]
+                display_nb = parts[1] if len(parts) >= 2 else (parts[0] if parts else None)
 
         return ScoreResult(
             passed=passed,
