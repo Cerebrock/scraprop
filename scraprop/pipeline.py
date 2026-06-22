@@ -129,6 +129,15 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                 if detail_html:
                     listing = source.parse_detail(detail_html, listing)
 
+                # Filtro duro de emprendimientos sobre el detalle: el cartel "emprendimiento"
+                # casi siempre vive en la descripción/título de la página de detalle (no en la
+                # card de búsqueda). Si lo dice, se descarta por completo (ni se guarda).
+                if config.ML_EXCLUDE_EMPRENDIMIENTOS and config.is_emprendimiento(
+                    listing.title, listing.description, listing.neighbourhood_raw
+                ):
+                    print("  ⊘ emprendimiento (descartado, no se guarda)")
+                    continue
+
                 result = scorer.evaluate(listing)
                 signature = content_signature(
                     result.neighbourhood, result.price_usd, result.surface_m2, listing.rooms

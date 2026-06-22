@@ -18,10 +18,7 @@ from ..models import Listing
 from .base import SourceAdapter
 
 _M2_RE = re.compile(r"(\d+)\s*m[²2]")
-# Emprendimientos / pozo / proyectos (no son una unidad concreta a comprar) → excluir
-_EMPRENDIMIENTO_RE = re.compile(
-    r"edificio en |emprendimiento|en pozo|en construcc|desde\s*(?:u\$s|usd|\$)", re.IGNORECASE
-)
+# Emprendimientos / pozo / proyectos: la regla vive en config (SSOT) → config.is_emprendimiento
 _AMB_RE = re.compile(r"(\d+)\s*ambiente")
 _DORM_RE = re.compile(r"(\d+)\s*(?:dormitorio|habitaci[oó]n)")
 _NUM_RE = re.compile(r"[\d.]+")
@@ -119,7 +116,7 @@ class MercadoLibre(SourceAdapter):
                 continue
             if config.ML_EXCLUDE_EMPRENDIMIENTOS:
                 card_text = f"{listing.title or ''} {card.get_text(' ', strip=True)}"
-                if _EMPRENDIMIENTO_RE.search(card_text):
+                if config.is_emprendimiento(card_text):
                     skipped_emp += 1
                     continue
             listings[listing.listing_id] = listing

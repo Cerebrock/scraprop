@@ -6,6 +6,7 @@ de ajustar sin tocar la lógica del pipeline.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -137,6 +138,23 @@ ML_PROPERTY_TYPES = ["departamentos", "ph", "casas"]
 
 # Excluir emprendimientos / pozo / proyectos (no son una unidad concreta a comprar)
 ML_EXCLUDE_EMPRENDIMIENTOS = True
+
+# Patrón para reconocer emprendimientos / pozo / proyectos en CUALQUIER texto (card o
+# detalle). Se descartan SIEMPRE: si la publicación "dice emprendimiento" (o es pozo / en
+# construcción / pre-venta / "desde U$S" / "unidades de…"), no es una unidad concreta a
+# comprar y va afuera. Es la SSOT de la regla; la usan la card de búsqueda y el detalle.
+EMPRENDIMIENTO_RE = re.compile(
+    r"emprendimiento|edificio en |en pozo|\ben pozo\b|en construcc|"
+    r"pre[\s-]?venta|preventa|desde\s*(?:u\$s|usd|\$)|unidades?\s+de\b|"
+    r"pozo\b|fideicomiso|proyecto inmobiliario",
+    re.IGNORECASE,
+)
+
+
+def is_emprendimiento(*texts: Optional[str]) -> bool:
+    """True si algún texto (título/descr/barrio) delata un emprendimiento/pozo/proyecto."""
+    blob = " ".join(t for t in texts if t)
+    return bool(EMPRENDIMIENTO_RE.search(blob))
 
 # Si las búsquedas usan polígono dibujado a mano, el polígono define la zona: NO se descarta
 # por "barrio fuera de zona" (el barrio solo suma puntos). Poné True para filtro estricto.
