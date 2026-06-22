@@ -149,12 +149,21 @@ EMPRENDIMIENTO_RE = re.compile(
     r"pozo\b|fideicomiso|proyecto inmobiliario",
     re.IGNORECASE,
 )
+# Señal por slug de la URL de ML: los emprendimientos casi siempre tienen el descriptor
+# arrancando en "edificio-…"/"imponente-edificio"/"torre-…"/"venta-unidades-de" (en vez de
+# "departamento-…"/"ph-…"/"casa-…"), aunque el título sea branded (BOLD, ICONIQ, etc.).
+# Anclado al id MLA para no marcar de más un slug que mencione "edificio" al pasar.
+_EMPRENDIMIENTO_URL_RE = re.compile(
+    r"/MLA-\d+-(?:imponente-|importante-|gran-)?(?:edificio|torre)\b"
+    r"|/MLA-\d+-venta-unidades-de\b",
+    re.IGNORECASE,
+)
 
 
 def is_emprendimiento(*texts: Optional[str]) -> bool:
-    """True si algún texto (título/descr/barrio) delata un emprendimiento/pozo/proyecto."""
+    """True si algún texto (título/descr/barrio/URL) delata un emprendimiento/pozo/proyecto."""
     blob = " ".join(t for t in texts if t)
-    return bool(EMPRENDIMIENTO_RE.search(blob))
+    return bool(EMPRENDIMIENTO_RE.search(blob) or _EMPRENDIMIENTO_URL_RE.search(blob))
 
 # Si las búsquedas usan polígono dibujado a mano, el polígono define la zona: NO se descarta
 # por "barrio fuera de zona" (el barrio solo suma puntos). Poné True para filtro estricto.

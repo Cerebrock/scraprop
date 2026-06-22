@@ -116,7 +116,7 @@ class MercadoLibre(SourceAdapter):
                 continue
             if config.ML_EXCLUDE_EMPRENDIMIENTOS:
                 card_text = f"{listing.title or ''} {card.get_text(' ', strip=True)}"
-                if config.is_emprendimiento(card_text):
+                if config.is_emprendimiento(card_text, listing.url):
                     skipped_emp += 1
                     continue
             listings[listing.listing_id] = listing

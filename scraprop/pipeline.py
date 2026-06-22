@@ -133,7 +133,7 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                 # casi siempre vive en la descripción/título de la página de detalle (no en la
                 # card de búsqueda). Si lo dice, se descarta por completo (ni se guarda).
                 if config.ML_EXCLUDE_EMPRENDIMIENTOS and config.is_emprendimiento(
-                    listing.title, listing.description, listing.neighbourhood_raw
+                    listing.title, listing.description, listing.neighbourhood_raw, listing.url
                 ):
                     print("  ⊘ emprendimiento (descartado, no se guarda)")
                     continue
