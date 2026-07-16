@@ -11,5 +11,8 @@ https://listado.mercadolibre.com.ar/inmuebles/ph/venta/capital-federal/villa-urq
 https://listado.mercadolibre.com.ar/inmuebles/departamentos/venta/capital-federal/belgrano/
 https://listado.mercadolibre.com.ar/inmuebles/casas/venta/bsas-gba-norte/vicente-lopez/florida/
 
-# Tip: para una búsqueda con polígono, dibujá la zona en ML (vista mapa) y pegá acá la URL
-# resultante (contiene "polygon_location=...").
+# Tip zona custom: usá un BOUNDING BOX en el path de la URL, no un polígono.
+# El token `_item*location_lat:<S>*<N>,lon:<O>*<E>` sobrevive a la paginación _Desde_N;
+# en cambio `?polygon_location=…` SOLO aplica a la página 1 — las páginas siguientes lo
+# ignoran y devuelven la búsqueda nacional (verificado 2026-07-16). Ejemplo:
+# https://inmuebles.mercadolibre.com.ar/ph/venta/_DisplayType_M_PriceRange_80000USD-200000USD_TOTAL*AREA_80m%C2%B2-*_item*location_lat:-34.60*-34.52,lon:-58.52*-58.38

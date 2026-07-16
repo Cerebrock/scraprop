@@ -140,9 +140,10 @@ ML_PROPERTY_TYPES = ["departamentos", "ph", "casas"]
 ML_EXCLUDE_EMPRENDIMIENTOS = True
 
 # Tope de páginas de resultados por búsqueda (paginación _Desde_). La búsqueda
-# corta antes si una página viene vacía o toda repetida. 8 páginas ≈ 800 cards,
-# holgado para deptos (~682 resultados declarados a jul-2026).
-MAX_SEARCH_PAGES = 8
+# corta antes si una página viene vacía o toda repetida, y al cubrir el total
+# declarado. 16 páginas ≈ 1600 cards, holgado para deptos en el bbox
+# (~1469 resultados declarados a jul-2026).
+MAX_SEARCH_PAGES = 16
 
 # Patrón para reconocer emprendimientos / pozo / proyectos en CUALQUIER texto (card o
 # detalle). Se descartan SIEMPRE: si la publicación "dice emprendimiento" (o es pozo / en
