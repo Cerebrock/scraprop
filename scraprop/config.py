@@ -139,6 +139,11 @@ ML_PROPERTY_TYPES = ["departamentos", "ph", "casas"]
 # Excluir emprendimientos / pozo / proyectos (no son una unidad concreta a comprar)
 ML_EXCLUDE_EMPRENDIMIENTOS = True
 
+# Tope de páginas de resultados por búsqueda (paginación _Desde_). La búsqueda
+# corta antes si una página viene vacía o toda repetida. 8 páginas ≈ 800 cards,
+# holgado para deptos (~682 resultados declarados a jul-2026).
+MAX_SEARCH_PAGES = 8
+
 # Patrón para reconocer emprendimientos / pozo / proyectos en CUALQUIER texto (card o
 # detalle). Se descartan SIEMPRE: si la publicación "dice emprendimiento" (o es pozo / en
 # construcción / pre-venta / "desde U$S" / "unidades de…"), no es una unidad concreta a

@@ -99,22 +99,41 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
         with BrowserSession() as session:
             # 1) recolectar candidatas (páginas de búsqueda)
             for source in SOURCES:
-                for url in source.search_urls():
+                for base_url in source.search_urls():
                     total_searches += 1
-                    print(f"\n[{datetime.now():%H:%M:%S}] 🔎 {url}")
-                    html = session.get(url, wait_selector=source.search_wait_selector)
-                    if not html:
-                        blocked_searches += 1
-                        continue
-                    listings = source.parse_search(html, url)
-                    print(f"  → {len(listings)} cards")
-                    for listing in listings:
-                        if listing.listing_id in seen_ids or db.has_id(listing.listing_id):
-                            continue
-                        if _cheap_prefilter(listing):
-                            continue
-                        seen_ids.add(listing.listing_id)
-                        candidates.append((source, listing))
+                    run_ids: set[str] = set()  # ids vistos en ESTA búsqueda (corte de paginación)
+                    url, offset = base_url, 1
+                    total: Optional[int] = None
+                    for page in range(config.MAX_SEARCH_PAGES):
+                        print(f"\n[{datetime.now():%H:%M:%S}] 🔎 {url}")
+                        html = session.get(url, wait_selector=source.search_wait_selector)
+                        if not html:
+                            blocked_searches += 1
+                            break
+                        if page == 0:
+                            total = source.total_results(html)
+                        listings = source.parse_search(html, url)
+                        print(f"  → {len(listings)} cards (pág. {page + 1}"
+                              + (f" de ~{total} resultados" if total else "") + ")")
+                        fresh = [l for l in listings if l.listing_id not in run_ids]
+                        run_ids.update(l.listing_id for l in listings)
+                        for listing in fresh:
+                            if listing.listing_id in seen_ids or db.has_id(listing.listing_id):
+                                continue
+                            if _cheap_prefilter(listing):
+                                continue
+                            seen_ids.add(listing.listing_id)
+                            candidates.append((source, listing))
+                        # La paginación avanza por cards CRUDAS (incluye excluidas en parse).
+                        raw_cards = source.count_cards(html) or len(listings)
+                        if not raw_cards or not fresh:
+                            break  # página vacía o toda repetida: fin de resultados
+                        offset += raw_cards
+                        if total and offset > total:
+                            break  # cubrimos el total declarado; más allá ML ignora filtros
+                        url = source.next_page_url(base_url, offset)
+                        if not url:
+                            break  # la fuente no pagina
 
             print(f"\n[{datetime.now():%H:%M:%S}] 🆕 {len(candidates)} candidatas nuevas")
             if limit:

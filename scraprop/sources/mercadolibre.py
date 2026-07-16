@@ -35,6 +35,8 @@ class MercadoLibre(SourceAdapter):
     name = "mercadolibre"
     base = "https://listado.mercadolibre.com.ar/inmuebles"
     search_wait_selector = "div.ui-search-result, li.ui-search-layout__item, div.poly-card"
+    _CARDS_SELECTOR = "li.ui-search-layout__item, div.ui-search-result, div.poly-card"
+    _DESDE_RE = re.compile(r"_Desde_\d+")
     detail_wait_selector = "h1.ui-pdp-title, .ui-pdp-container"
 
     # ------------------------------------------------------------------ #
@@ -50,6 +52,32 @@ class MercadoLibre(SourceAdapter):
             for n in config.NEIGHBOURHOODS:
                 urls.append(f"{self.base}/{tipo}/venta/{n.location_path}/")
         return urls
+
+    def count_cards(self, html: str) -> int:
+        # Cards ÚNICAS por listing_id: el selector matchea contenedores anidados
+        # (li.ui-search-layout__item Y su div.poly-card interno), así que un
+        # len(select) crudo cuenta ~2x y rompe el offset de paginación.
+        soup = BeautifulSoup(html, "lxml")
+        ids = set()
+        for card in soup.select(self._CARDS_SELECTOR):
+            link = card.select_one('a[href*="MLA-"]')
+            if link and link.get("href"):
+                lid = listing_id_from_url(link["href"].split("#")[0])
+                if lid:
+                    ids.add(lid)
+        return len(ids)
+
+    _TOTAL_RE = re.compile(r"([\d.,]+)\s*(?:inmuebles|resultados)")
+
+    def total_results(self, html: str) -> Optional[int]:
+        m = self._TOTAL_RE.search(html)
+        return int(re.sub(r"[.,]", "", m.group(1))) if m else None
+
+    def next_page_url(self, search_url: str, next_offset: int) -> Optional[str]:
+        # ML pagina con el token _Desde_N (índice 1-based del primer ítem) en el
+        # path, antes del query string. Funciona también en vista mapa (DisplayType_M).
+        path, sep, query = search_url.partition("?")
+        return f"{self._DESDE_RE.sub('', path)}_Desde_{next_offset}{sep}{query}"
 
     # ------------------------------------------------------------------ #
     def _card_to_listing(self, card) -> Optional[Listing]:
@@ -109,7 +137,7 @@ class MercadoLibre(SourceAdapter):
         listings: dict[str, Listing] = {}
         skipped_emp = 0
 
-        cards = soup.select("li.ui-search-layout__item, div.ui-search-result, div.poly-card")
+        cards = soup.select(self._CARDS_SELECTOR)
         for card in cards:
             listing = self._card_to_listing(card)
             if not listing or listing.listing_id in listings:
