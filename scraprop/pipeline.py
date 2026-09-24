@@ -199,6 +199,14 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                 if dry_run:
                     continue
 
+                # Veredicto degradado (LLM caído) que descarta: no se guarda, así la próxima
+                # corrida la reevalúa con el LLM. Si se guardara, quedaría descartada para
+                # siempre por un falso "lejos de avenida". En una prioritaria el veredicto no
+                # decide el aviso, así que sigue de largo.
+                if result.degraded and not result.passed and not search.priority:
+                    print("  ⏳ Veredicto degradado: no se guarda, se reintenta la próxima corrida")
+                    continue
+
                 available = listing.status not in ("finalizada", "no disponible")
                 wanted = result.passed or search.priority
                 should_notify = wanted and not dup and not cand_backfill and available
@@ -355,7 +363,7 @@ def _build_record(listing: Listing, r: ScoreResult, signature: str, notified: bo
         "tracked": int(tracked),
         "notified": int(notified),
         "raw": {"failed": r.failed, "posted_days_ago": listing.posted_days_ago,
-                "priority": priority},
+                "priority": priority, "degraded": r.degraded},
     }
 
 

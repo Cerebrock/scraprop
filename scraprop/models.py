@@ -51,3 +51,6 @@ class ScoreResult:
     near_train: bool = False
     proximity_reason: Optional[str] = None
     summary: str = ""   # resumen de ventajas/desventajas: "+jardín +tren -escalera"
+    # True si el LLM estaba configurado pero falló y se usó la heurística: el veredicto
+    # no es confiable (la heurística marca "lejos de avenida" de más).
+    degraded: bool = False

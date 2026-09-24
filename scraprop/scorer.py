@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Optional
 
 from . import config
@@ -61,16 +62,25 @@ class Scorer:
 
     # ------------------------------------------------------------------ #
     def evaluate(self, listing: Listing) -> ScoreResult:
-        extracted = self._extract(listing)
-        return self._apply_rules(listing, extracted)
+        extracted, degraded = self._extract(listing)
+        result = self._apply_rules(listing, extracted)
+        result.degraded = degraded
+        return result
 
     # --- extracción (LLM o heurística) --- #
-    def _extract(self, listing: Listing) -> dict:
+    def _extract(self, listing: Listing) -> tuple[dict, bool]:
+        """(campos, degradado). Degradado = había LLM pero falló y se usó la heurística."""
         if self._client:
             data = self._extract_llm(listing)
             if data is not None:
-                return data
-        return self._extract_heuristic(listing)
+                return data, False
+            return self._extract_heuristic(listing), True
+        return self._extract_heuristic(listing), False
+
+    # Errores transitorios de Gemini (sobrecarga / rate limit): se reintentan con backoff.
+    _TRANSIENT_RE = re.compile(r"\b(429|500|503)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded",
+                               re.IGNORECASE)
+    _RETRY_WAITS = (5, 20)  # segundos antes del 2do y 3er intento
 
     def _extract_llm(self, listing: Listing) -> Optional[dict]:
         prompt = self.prompt.format(
@@ -80,23 +90,30 @@ class Scorer:
             surface=f"{listing.surface_m2} m²" if listing.surface_m2 else "",
             description=(listing.description or "")[:4000],
         )
-        try:
-            from google.genai import types
-            resp = self._client.models.generate_content(
-                model=self.settings.gemini_model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0,
-                ),
-            )
-            text = (resp.text or "").strip()
-            # por las dudas, recortar a las llaves del JSON
-            m = re.search(r"\{.*\}", text, re.DOTALL)
-            return json.loads(m.group() if m else text)
-        except Exception as e:
-            print(f"  ⚠️  Falla LLM ({e}) — heurística para {listing.listing_id}")
-            return None
+        from google.genai import types
+        for attempt, wait in enumerate((0,) + self._RETRY_WAITS):
+            if wait:
+                time.sleep(wait)
+            try:
+                resp = self._client.models.generate_content(
+                    model=self.settings.gemini_model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0,
+                    ),
+                )
+                text = (resp.text or "").strip()
+                # por las dudas, recortar a las llaves del JSON
+                m = re.search(r"\{.*\}", text, re.DOTALL)
+                return json.loads(m.group() if m else text)
+            except Exception as e:
+                transient = bool(self._TRANSIENT_RE.search(str(e)))
+                if transient and attempt < len(self._RETRY_WAITS):
+                    continue
+                print(f"  ⚠️  Falla LLM ({str(e)[:120]}) — heurística para {listing.listing_id}")
+                return None
+        return None
 
     def _extract_heuristic(self, listing: Listing) -> dict:
         text = " ".join(
