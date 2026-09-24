@@ -4,6 +4,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional
 
+from ..config import Search
 from ..models import Listing
 
 
@@ -15,8 +16,8 @@ class SourceAdapter(ABC):
     detail_wait_selector: str | None = None
 
     @abstractmethod
-    def search_urls(self) -> list[str]:
-        """URLs de búsqueda a recorrer (una por barrio/tipo)."""
+    def searches(self) -> list[Search]:
+        """Búsquedas a recorrer (una por barrio/tipo, o las fijas de searches.txt)."""
 
     @abstractmethod
     def parse_search(self, html: str, search_url: str) -> list[Listing]:

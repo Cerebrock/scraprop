@@ -91,15 +91,24 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
 
     scorer = Scorer(settings)
 
-    candidates: list[tuple] = []  # (source, listing)
+    candidates: list[tuple] = []  # (source, listing, search, backfill)
     seen_ids: set[str] = set()
     total_searches = blocked_searches = 0
     notified = 0
+    # Búsquedas prioritarias en su primera pasada: url -> publicaciones cargadas.
+    first_loads: dict[str, int] = {}
     try:
         with BrowserSession() as session:
-            # 1) recolectar candidatas (páginas de búsqueda)
+            # 1) recolectar candidatas (páginas de búsqueda). Las prioritarias van primero:
+            # una publicación que aparece en varias búsquedas queda con la marca prioritaria.
             for source in SOURCES:
-                for base_url in source.search_urls():
+                for search in sorted(source.searches(), key=lambda s: not s.priority):
+                    base_url = search.url
+                    first_load = search.priority and not db.search_loaded(base_url)
+                    cand_backfill = backfill or first_load
+                    if first_load:
+                        first_loads[base_url] = 0
+                        print("\n  📌 Búsqueda prioritaria nueva: primera pasada sin alertas.")
                     total_searches += 1
                     run_ids: set[str] = set()  # ids vistos en ESTA búsqueda (corte de paginación)
                     url, offset = base_url, 1
@@ -109,6 +118,7 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                         html = session.get(url, wait_selector=source.search_wait_selector)
                         if not html:
                             blocked_searches += 1
+                            first_loads.pop(base_url, None)  # no quedó cargada
                             break
                         if page == 0:
                             total = source.total_results(html)
@@ -120,10 +130,13 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                         for listing in fresh:
                             if listing.listing_id in seen_ids or db.has_id(listing.listing_id):
                                 continue
-                            if _cheap_prefilter(listing):
+                            # En una prioritaria los filtros de la URL mandan: sin prefiltro.
+                            if not search.priority and _cheap_prefilter(listing):
                                 continue
                             seen_ids.add(listing.listing_id)
-                            candidates.append((source, listing))
+                            candidates.append((source, listing, search, cand_backfill))
+                            if base_url in first_loads:
+                                first_loads[base_url] += 1
                         # La paginación avanza por cards CRUDAS (incluye excluidas en parse).
                         raw_cards = source.count_cards(html) or len(listings)
                         if not raw_cards or not fresh:
@@ -141,7 +154,7 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                 print(f"  🔬 Limitado a {len(candidates)}")
 
             # 2) detalle + LLM + reglas
-            for i, (source, listing) in enumerate(candidates, 1):
+            for i, (source, listing, search, cand_backfill) in enumerate(candidates, 1):
                 print(f"\n[{i}/{len(candidates)}] {listing.url}")
                 detail_html = session.get(listing.url, wait_selector=source.detail_wait_selector,
                                            scroll=True)
@@ -174,19 +187,23 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                 )
                 dup = db.has_signature(signature)
                 status = "✅ PASA" if result.passed else "✋ descartada"
+                if search.priority:
+                    status = "📌 PRIORITARIA · " + status
                 if dup:
                     status += " (repost duplicado)"
                 print(f"  {status} score={result.score} "
                       f"{'| ' + ', '.join(result.failed) if result.failed else ''}")
 
-                record = _build_record(listing, result, signature, notified=False)
+                record = _build_record(listing, result, signature, notified=False,
+                                       priority=search.priority)
                 if dry_run:
                     continue
 
                 available = listing.status not in ("finalizada", "no disponible")
-                should_notify = result.passed and not dup and not backfill and available
+                wanted = result.passed or search.priority
+                should_notify = wanted and not dup and not cand_backfill and available
                 if should_notify:
-                    msg = notify.format_message(listing, result)
+                    msg = notify.format_message(listing, result, priority=search.priority)
                     if notify.send(settings, msg, photo=listing.image,
                                    buttons=notify.alert_buttons(listing)):
                         notified += 1
@@ -194,6 +211,13 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
                         print("  📨 Notificado por Telegram")
                 db.upsert(record)
                 _append_csv(_flat_record(listing, result, signature))
+
+        # Primera pasada completa de una prioritaria: queda cargada y se avisa una vez.
+        if not dry_run and not limit:
+            for url, n in first_loads.items():
+                db.mark_search_loaded(url)
+                notify.send(settings, notify.format_priority_loaded(n),
+                            buttons=[[("🔎 Ver búsqueda", url)]])
 
         # Aviso de fallo: si TODAS las búsquedas se bloquearon, la sesión venció.
         if not dry_run and total_searches and blocked_searches == total_searches:
@@ -310,7 +334,7 @@ def ingest(urls: list[str]) -> None:
 
 
 def _build_record(listing: Listing, r: ScoreResult, signature: str, notified: bool,
-                  tracked: bool = False) -> dict:
+                  tracked: bool = False, priority: bool = False) -> dict:
     return {
         "listing_id": listing.listing_id,
         "source": listing.source,
@@ -330,7 +354,8 @@ def _build_record(listing: Listing, r: ScoreResult, signature: str, notified: bo
         "status": listing.status,
         "tracked": int(tracked),
         "notified": int(notified),
-        "raw": {"failed": r.failed, "posted_days_ago": listing.posted_days_ago},
+        "raw": {"failed": r.failed, "posted_days_ago": listing.posted_days_ago,
+                "priority": priority},
     }
 
 

@@ -63,6 +63,14 @@ búsquedas con polígono** dibujado a mano (zona apta), para PH / casas / depart
 URLs + sesión autenticada + pacing con jitter + solo página 1 + detalle solo de las nuevas →
 riesgo de ban bajo. Para cambiar la zona, dibujá de nuevo en ML y pegá la URL acá.
 
+### Búsquedas prioritarias (`[prio]`)
+Una línea de `searches.txt` con prefijo `[prio]` es una búsqueda prioritaria: los filtros de
+la URL son el criterio, así que se avisa **toda** publicación nueva que traiga, cumpla o no las
+reglas de compra (sin prefiltro de precio/superficie; las reglas solo puntúan y las que no
+cumple aparecen como "no cumple" en el mensaje). Corre antes que las demás. Su primera
+pasada carga el inventario actual sin alertas y manda un único aviso con el conteo
+(tabla `searches` en la DB).
+
 ### Usar tu sesión REAL de Chrome (opción anti-ban)
 En vez de `login`, podés apuntar a tu perfil de Chrome ya logueado (en `.env`):
 ```

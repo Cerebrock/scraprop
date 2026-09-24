@@ -40,18 +40,15 @@ class MercadoLibre(SourceAdapter):
     detail_wait_selector = "h1.ui-pdp-title, .ui-pdp-container"
 
     # ------------------------------------------------------------------ #
-    def search_urls(self) -> list[str]:
+    def searches(self) -> list[config.Search]:
         # URLs fijas elegidas por el usuario (searches.txt) tienen prioridad.
-        fixed = config.load_search_urls()
+        fixed = config.load_searches()
         if fixed:
             return fixed
         # Default generado: sin filtros en la URL (el token _PriceRange con barrio da
         # Zero-Results en ML). El filtrado de precio/superficie se hace en código.
-        urls = []
-        for tipo in config.ML_PROPERTY_TYPES:
-            for n in config.NEIGHBOURHOODS:
-                urls.append(f"{self.base}/{tipo}/venta/{n.location_path}/")
-        return urls
+        return [config.Search(f"{self.base}/{tipo}/venta/{n.location_path}/")
+                for tipo in config.ML_PROPERTY_TYPES for n in config.NEIGHBOURHOODS]
 
     def count_cards(self, html: str) -> int:
         # Cards ÚNICAS por listing_id: el selector matchea contenedores anidados

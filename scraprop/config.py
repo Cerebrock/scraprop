@@ -27,14 +27,42 @@ PROMPT_FILE = ROOT / "prompt.txt"
 PROMPT_EXAMPLE = ROOT / "prompt.example.txt"
 
 
-def load_search_urls() -> Optional[list[str]]:
+@dataclass(frozen=True)
+class Search:
+    """Una búsqueda a recorrer.
+
+    priority=True ("[prio] <url>" en searches.txt): los filtros de la URL SON el criterio.
+    Se avisa toda publicación nueva que traiga la búsqueda, cumpla o no las reglas de
+    compra (que solo puntúan y se muestran como aviso). Su primera pasada carga el
+    inventario actual sin alertas, para no mandar una por cada publicación existente.
+    """
+    url: str
+    priority: bool = False
+
+
+_PRIO_TAG = "[prio]"
+
+
+def parse_search_line(line: str) -> Optional[Search]:
+    ln = line.strip()
+    if not ln or ln.startswith("#"):
+        return None
+    priority = ln.lower().startswith(_PRIO_TAG)
+    if priority:
+        ln = ln[len(_PRIO_TAG):].strip()
+    # El #fragmento (applied_filter_… que agrega ML al filtrar) no viaja al server y
+    # rompería la paginación, que agrega _Desde_N al final del path.
+    url = ln.split("#", 1)[0].strip()
+    return Search(url=url, priority=priority) if url else None
+
+
+def load_searches() -> Optional[list[Search]]:
     """Lee searches.txt (privado) si existe; si no, searches.example.txt."""
     for fp in (SEARCHES_FILE, SEARCHES_EXAMPLE):
         if fp.exists():
-            urls = [ln.strip() for ln in fp.read_text().splitlines()
-                    if ln.strip() and not ln.strip().startswith("#")]
-            if urls:
-                return urls
+            searches = [s for s in map(parse_search_line, fp.read_text().splitlines()) if s]
+            if searches:
+                return searches
     return None
 
 

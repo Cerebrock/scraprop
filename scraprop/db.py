@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS properties (
     raw           TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_signature ON properties(signature);
+-- Búsquedas cuya primera pasada ya se cargó (backfill por búsqueda, ver config.Search).
+CREATE TABLE IF NOT EXISTS searches (
+    url        TEXT PRIMARY KEY,
+    first_run  TEXT
+);
 """
 
 
@@ -88,6 +93,17 @@ class DB:
             f"FROM properties {where} ORDER BY score DESC, price_usd ASC LIMIT ?", (n,)
         )
         return [dict(r) for r in cur.fetchall()]
+
+    def search_loaded(self, url: str) -> bool:
+        cur = self.conn.execute("SELECT 1 FROM searches WHERE url = ?", (url,))
+        return cur.fetchone() is not None
+
+    def mark_search_loaded(self, url: str) -> None:
+        self.conn.execute(
+            "INSERT OR IGNORE INTO searches (url, first_run) VALUES (?, ?)",
+            (url, datetime.now().isoformat(timespec="seconds")),
+        )
+        self.conn.commit()
 
     def count_real(self) -> int:
         """Cantidad de propiedades reales scrapeadas (excluye migradas de seen.txt)."""

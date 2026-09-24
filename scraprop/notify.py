@@ -30,12 +30,17 @@ def _pts(breakdown: dict, prefix: str):
     return next((v for k, v in breakdown.items() if k.startswith(prefix)), None)
 
 
-def format_message(listing: Listing, r: ScoreResult) -> str:
-    """Alerta en bullets: encabezado + datos en negrita + ventajas/desventajas con viñetas."""
+def format_message(listing: Listing, r: ScoreResult, priority: bool = False) -> str:
+    """Alerta en bullets: encabezado + datos en negrita + ventajas/desventajas con viñetas.
+
+    priority: viene de una búsqueda prioritaria. Se avisa aunque no cumpla las reglas de
+    compra, y las que no cumple se listan al final como aviso.
+    """
     bp, op, pp = _pts(r.breakdown, "Barrio"), _pts(r.breakdown, "Exterior"), _pts(r.breakdown, "Precio")
     badge = f"  {_STATUS_BADGE[listing.status]}" if listing.status in _STATUS_BADGE else ""
 
-    lines = [f"🏡 <b>{r.neighbourhood or 'Propiedad'}</b> · ⭐ <b>{r.score:g}/10</b>{badge}"]
+    lines = ["📌 <b>BÚSQUEDA PRIORITARIA</b>"] if priority else []
+    lines.append(f"🏡 <b>{r.neighbourhood or 'Propiedad'}</b> · ⭐ <b>{r.score:g}/10</b>{badge}")
     if listing.title:
         t = listing.title if len(listing.title) <= 75 else listing.title[:72] + "…"
         lines.append(f"<i>{t}</i>")
@@ -64,7 +69,16 @@ def format_message(listing: Listing, r: ScoreResult) -> str:
         lines.append(f"• 🚆 a ≤4 cuadras de {', '.join(prox)}")
     for con in [p for p in r.summary.split() if p.startswith("-")]:
         lines.append(f"• ⚠️ {con[1:]}")
+    if priority and r.failed:
+        lines.append(f"• ✋ no cumple: {'; '.join(r.failed)}")
     return "\n".join(lines)  # el link va en el botón inline (alert_buttons)
+
+
+def format_priority_loaded(n: int) -> str:
+    """Aviso único al terminar la primera pasada de una búsqueda prioritaria."""
+    return (f"📌 <b>Búsqueda prioritaria activa</b>\n"
+            f"Cargué {n} publicaciones actuales sin avisar una por una.\n"
+            f"Desde ahora te aviso cada publicación nueva, cumpla o no las reglas.")
 
 
 def alert_buttons(listing: Listing) -> list:

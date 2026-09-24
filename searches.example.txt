@@ -3,6 +3,11 @@
 # mano en el mapa de MercadoLibre, que NO conviene compartir.
 #
 # Una URL por línea. Si existe searches.txt, reemplaza a este ejemplo.
+# Prefijo "[prio]": búsqueda PRIORITARIA. Los filtros de la URL son el criterio: se avisa
+# toda publicación nueva que traiga, cumpla o no las reglas de compra (las que no cumple
+# van como aviso en el mensaje). Su primera pasada carga el inventario actual sin alertas.
+# El #fragmento que agrega ML al filtrar se ignora, se puede pegar la URL tal cual.
+#   [prio] https://inmuebles.mercadolibre.com.ar/ph/venta/bsas-gba-norte/vicente-lopez/florida/_NoIndex_True_TOTAL*AREA_100m%C2%B2-*
 # Patrón simple por barrio (sin polígono):
 
 https://listado.mercadolibre.com.ar/inmuebles/ph/venta/capital-federal/chacarita/
