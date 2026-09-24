@@ -15,3 +15,8 @@ outputs/
 storage_state.json
 .venv/
 venv/
+
+# Uptime Kuma push token (local, no commitear)
+.kuma_push
+cron.log
+.run.lock

@@ -150,8 +150,36 @@ class BrowserSession:
                 ctx_kwargs["storage_state"] = str(self.storage)
             self._context = self._browser.new_context(**ctx_kwargs)
         self._context.set_default_timeout(45_000)
+        self._block_assets()
         if self._page is None:
             self._page = self._context.new_page()
+
+    # Tipos de recurso que no aportan al HTML parseado: no bajarlos ahorra el grueso
+    # del ancho de banda (las páginas de ML son pesadísimas en imágenes).
+    # Desactivable con SCRAPROP_LOAD_ASSETS=1 (ej. para debug headful).
+    _BLOCKED_RESOURCE_TYPES = ("image", "media", "font")
+
+    def _block_assets(self) -> None:
+        if os.getenv("SCRAPROP_LOAD_ASSETS", "").lower() in ("1", "true", "yes"):
+            return
+
+        def _route(route):
+            try:
+                if route.request.resource_type in self._BLOCKED_RESOURCE_TYPES:
+                    route.abort()
+                else:
+                    route.continue_()
+            except Exception:
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+
+        try:
+            self._context.route("**/*", _route)
+            print(f"  🚫 Assets bloqueados: {', '.join(self._BLOCKED_RESOURCE_TYPES)}")
+        except Exception as e:
+            print(f"  ⚠️  No se pudo bloquear assets ({e}); sigo sin bloqueo.")
 
     def get(self, url: str, wait_selector: Optional[str] = None, retries: int = 3,
             scroll: bool = False) -> str:

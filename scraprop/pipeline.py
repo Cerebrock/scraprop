@@ -150,11 +150,22 @@ def run(dry_run: bool = False, limit: Optional[int] = None,
 
                 # Filtro duro de emprendimientos sobre el detalle: el cartel "emprendimiento"
                 # casi siempre vive en la descripción/título de la página de detalle (no en la
-                # card de búsqueda). Si lo dice, se descarta por completo (ni se guarda).
+                # card de búsqueda). Se guarda el id con status "emprendimiento" (sin score ni
+                # notificación) para que el dedup lo saltee y no se re-baje el detalle en cada
+                # corrida.
                 if config.ML_EXCLUDE_EMPRENDIMIENTOS and config.is_emprendimiento(
                     listing.title, listing.description, listing.neighbourhood_raw, listing.url
                 ):
-                    print("  ⊘ emprendimiento (descartado, no se guarda)")
+                    print("  ⊘ emprendimiento (descartado)")
+                    if not dry_run:
+                        db.upsert({
+                            "listing_id": listing.listing_id,
+                            "source": listing.source,
+                            "url": listing.url,
+                            "title": listing.title,
+                            "passed": 0,
+                            "status": "emprendimiento",
+                        })
                     continue
 
                 result = scorer.evaluate(listing)

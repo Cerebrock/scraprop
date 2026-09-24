@@ -1,0 +1,26 @@
+# scraprop en la Raspberry Pi — JOB efímero, independiente de social-engine.
+# No corre always-on: el cron del host invoca un contenedor por pasada y lo borra
+# (`run --rm`). La data vive en el host (bind-mount ./data), así que NO se pierde
+# entre corridas ni al recrear la imagen.
+#
+# Manual:
+#   sudo docker compose -f docker-compose.rpi.yml build
+#   sudo docker compose -f docker-compose.rpi.yml run --rm scraprop            # una pasada
+#   sudo docker compose -f docker-compose.rpi.yml run --rm scraprop python -m scraprop digest
+# El schedule real lo dispara el crontab del host (ver ~/scraprop/run.sh).
+services:
+  scraprop:
+    build: .
+    image: scraprop:latest
+    env_file:
+      - .env
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+    # data/ persiste db + csv + storage_state.json (sesión ML autenticada) en el host.
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
